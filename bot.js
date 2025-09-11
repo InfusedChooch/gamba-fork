@@ -207,6 +207,7 @@ function hasAdminAccess(member) {
 
 client.once('ready', () => {
     console.log(`${client.user.tag} is online and ready to make some deals! Heh heh heh...`);
+    console.log('Bot successfully deployed on Railway!');
 });
 
 client.on('messageCreate', async (message) => {
