@@ -468,4 +468,10 @@ client.on('messageCreate', async (message) => {
     }
 });
 
+// Debug token on Railway
+console.log('Environment check:');
+console.log('DISCORD_TOKEN exists:', !!process.env.DISCORD_TOKEN);
+console.log('DISCORD_TOKEN length:', process.env.DISCORD_TOKEN ? process.env.DISCORD_TOKEN.length : 'undefined');
+console.log('DISCORD_TOKEN starts with:', process.env.DISCORD_TOKEN ? process.env.DISCORD_TOKEN.substring(0, 5) : 'undefined');
+
 client.login(process.env.DISCORD_TOKEN);
