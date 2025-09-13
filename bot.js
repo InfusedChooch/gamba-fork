@@ -189,18 +189,6 @@ const GOBLIN_MESSAGES = {
                 '🏦 Loan Portfolio',
                 '📊 Debt Summary'
             ]
-        },
-        suspended: {
-            titles: [
-                '🚫 Account Suspended!',
-                '⛔ No Gambling for You!',
-                '🔒 Privileges Revoked!',
-                '💀 You\'re Cut Off!'
-            ],
-            descriptions: [
-                `Listen here, deadbeat! You've missed **{missedPayments}** payments and now you're SUSPENDED from gambling!\n\nPay up your debts before you can roll again, capisce?`,
-                `Hah! Think you can just ignore your debts? **{missedPayments}** missed payments means no more games until you pay!\n\nMoney talks, and yours ain't saying much!`
-            ]
         }
     },
     loanPayment: {
@@ -323,12 +311,11 @@ async function processDailyLoans() {
                 const lateFee = 50;
                 const finalBalance = newBalance + lateFee;
                 const newMissedPayments = loan.missed_payments + 1;
-                const shouldSuspend = newMissedPayments >= 3;
                 
-                // Update loan with interest, late fee, and missed payment
-                await db.updateLoan(loan.loan_id, finalBalance, newMissedPayments, shouldSuspend);
+                // Update loan with interest, late fee, and missed payment (no suspension)
+                await db.updateLoan(loan.loan_id, finalBalance, newMissedPayments, false);
                 
-                console.log(`❌ Payment missed for loan ${loan.loan_id}. New balance: ${finalBalance}, Missed payments: ${newMissedPayments}, Suspended: ${shouldSuspend}`);
+                console.log(`❌ Payment missed for loan ${loan.loan_id}. New balance: ${finalBalance}, Missed payments: ${newMissedPayments}`);
             }
         }
         
@@ -474,7 +461,7 @@ client.on('messageCreate', async (message) => {
             },
             {
                 name: '🏦 Loan System:',
-                value: '• Borrow coins at **18% APR** (0.05% daily interest)\n• Minimum payment: **3%** of balance or **25 coins**\n• Miss 3 payments = Gambling suspended!\n• Late fee: **50 Gold Coins** per missed payment',
+                value: '• Borrow coins at **18% APR** (0.05% daily interest)\n• Minimum payment: **3%** of balance or **25 coins**\n• Late fee: **50 Gold Coins** per missed payment\n• Interest compounds daily until paid!',
                 inline: false
             },
             {
@@ -570,24 +557,7 @@ client.on('messageCreate', async (message) => {
         return await safeReply(message, { embeds: [embed] });
     }
 
-    // Check if user is suspended from gambling
     if (command === 'roll') {
-        const isSuspended = await db.getUserSuspensionStatus(message.author.id);
-        if (isSuspended) {
-            const userLoans = await db.getUserLoans(message.author.id);
-            const totalMissedPayments = userLoans.reduce((sum, loan) => sum + loan.missed_payments, 0);
-            
-            const title = getRandomMessage(GOBLIN_MESSAGES.loanStatus.suspended.titles);
-            const description = getRandomMessage(GOBLIN_MESSAGES.loanStatus.suspended.descriptions)
-                .replace('{missedPayments}', totalMissedPayments);
-            
-            const embed = new EmbedBuilder()
-                .setColor('#ff0000')
-                .setTitle(title)
-                .setDescription(description);
-            return await safeReply(message, { embeds: [embed] });
-        }
-
         const betAmount = parseInt(args[0]);
         
         if (!betAmount || betAmount <= 0) {
@@ -740,7 +710,6 @@ client.on('messageCreate', async (message) => {
             description += `• Min Payment: **${minPayment}** Gold Coins\n`;
             description += `• Next Due: **${nextDue}**\n`;
             description += `• Missed Payments: **${loan.missed_payments}**\n`;
-            if (loan.is_suspended) description += `• Status: **🚫 SUSPENDED**\n`;
             description += '\n';
             
             totalDebt += balance;

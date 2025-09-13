@@ -188,17 +188,6 @@ class Database {
         });
     }
 
-    getUserSuspensionStatus(userId) {
-        return new Promise((resolve, reject) => {
-            this.db.get('SELECT COUNT(*) as suspended_loans FROM loans WHERE user_id = ? AND is_suspended = 1', [userId], (err, row) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(row.suspended_loans > 0);
-                }
-            });
-        });
-    }
 }
 
 module.exports = Database;
