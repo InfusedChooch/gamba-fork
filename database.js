@@ -188,6 +188,30 @@ class Database {
         });
     }
 
+    forgiveUserLoans(userId) {
+        return new Promise((resolve, reject) => {
+            this.db.run('UPDATE loans SET current_balance = 0 WHERE user_id = ? AND current_balance > 0', [userId], function(err) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve({ changes: this.changes });
+                }
+            });
+        });
+    }
+
+    forgiveLoanById(loanId) {
+        return new Promise((resolve, reject) => {
+            this.db.run('UPDATE loans SET current_balance = 0 WHERE loan_id = ?', [loanId], function(err) {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve({ changes: this.changes });
+                }
+            });
+        });
+    }
+
 }
 
 module.exports = Database;

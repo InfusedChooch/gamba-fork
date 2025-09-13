@@ -449,6 +449,11 @@ client.on('messageCreate', async (message) => {
                     name: '📚 !setgold @user <amount>',
                     value: 'Set a user\'s exact Gold Coin balance\n*Example: `!setgold @friend 1500`*',
                     inline: true
+                },
+                {
+                    name: '✨ !forgiveloan @user',
+                    value: 'Clear all debts for a user (debt forgiveness)\n*Example: `!forgiveloan @friend`*',
+                    inline: true
                 }
             );
         }
@@ -781,6 +786,52 @@ client.on('messageCreate', async (message) => {
             .setColor('#00ff00')
             .setTitle(title)
             .setDescription(description);
+        
+        return await safeReply(message, { embeds: [embed] });
+    }
+
+    if (command === 'forgiveloan' || command === 'cleardebt') {
+        if (!hasAdminAccess(message.member)) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🚫 Admin Only, Friend!')
+                .setDescription('Whoa there! Only admins can forgive debts! You need the **Gamba Bot Admin** role for that kind of power, capisce?');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        const targetUser = message.mentions.users.first();
+        
+        if (!targetUser) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('📝 Invalid Command Format!')
+                .setDescription('Listen up, boss! You gotta use: `!forgiveloan @user`\n*Example: `!forgiveloan @friend`*');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        // Get user's current loans
+        const userLoans = await db.getUserLoans(targetUser.id);
+        
+        if (userLoans.length === 0) {
+            const embed = new EmbedBuilder()
+                .setColor('#00ff88')
+                .setTitle('✨ No Debts to Forgive!')
+                .setDescription(`Hold up, boss! ${targetUser} doesn't owe me anything!\n\nTheir slate is already clean!`);
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        // Calculate total debt being forgiven
+        const totalDebt = userLoans.reduce((sum, loan) => sum + loan.current_balance, 0);
+        const roundedDebt = Math.round(totalDebt * 100) / 100;
+
+        // Forgive all loans for this user
+        const result = await db.forgiveUserLoans(targetUser.id);
+
+        const embed = new EmbedBuilder()
+            .setColor('#00ff00')
+            .setTitle('✨ Debt Forgiven!')
+            .setDescription(`Alright boss, I've wiped the slate clean for ${targetUser}!\n\n💸 **Debt Forgiven:**\n• Total Amount: **${roundedDebt}** Gold Coins\n• Loans Cleared: **${userLoans.length}**\n• Status: **DEBT FREE!**\n\nThat's some serious generosity, boss! The books have been updated accordingly.`)
+            .setFooter({ text: 'Remember: With great power comes great responsibility!' });
         
         return await safeReply(message, { embeds: [embed] });
     }
