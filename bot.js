@@ -460,7 +460,7 @@ client.on('messageCreate', async (message) => {
         embed.addFields(
             {
                 name: '📋 How It Works:',
-                value: '• Everyone starts with **1000 Gold Coins**\n• Roll 1-25, highest roll wins\n• Win = Get double your bet back\n• Lose = I keep your coins! Heh heh...',
+                value: '• Everyone starts with **1000 Gold Coins**\n• Roll 1-100, highest roll wins\n• Win = Get double your bet back\n• Lose = I keep your coins! Heh heh...',
                 inline: false
             },
             {
@@ -587,8 +587,8 @@ client.on('messageCreate', async (message) => {
         }
 
         // Generate random numbers
-        const playerRoll = Math.floor(Math.random() * 25) + 1;
-        const botRoll = Math.floor(Math.random() * 25) + 1;
+        const playerRoll = Math.floor(Math.random() * 100) + 1;
+        const botRoll = Math.floor(Math.random() * 100) + 1;
         
         let resultColor, resultTitle, resultDesc, newBalance;
 

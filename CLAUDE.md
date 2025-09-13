@@ -12,7 +12,7 @@
 ## Features Implemented
 - Virtual Gold Coin currency system
 - Role-based permissions (Gamba Bot Member & Gamba Bot Admin)
-- Roll gambling game (1-25 number range)
+- Roll gambling game (1-100 number range)
 - **Gold Coin loan system with 18% APR and automated daily payments**
 - SQLite database for persistent user data
 - All members start with 1000 Gold Coins
@@ -35,7 +35,7 @@
 - `!setgold @user <amount>` - Set user's exact Gold Coin balance
 
 ## Game Rules
-- Both player and bot roll numbers between 1-25
+- Both player and bot roll numbers between 1-100
 - Higher number wins
 - Win: Get double your bet amount back
 - Lose: Lose your bet amount
