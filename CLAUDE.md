@@ -6,9 +6,8 @@
 ## Project Details
 - **Language**: Node.js (JavaScript)
 - **Framework**: Discord.js v14
-- **Database**: SQLite3 (local gamba.db file)
+- **Database**: SQLite3 (local gamba.db file)  
 - **Repository**: https://github.com/RyanCGit/gamba-bot
-- **Deployed on**: Railway.app (cloud hosting)
 
 ## Features Implemented
 - Virtual Gold Coin currency system
@@ -102,9 +101,6 @@ gamba-bot/
 ### 4. Deployment Process
 - Set up Git repository and GitHub integration
 - Configured .gitignore for sensitive files
-- Successfully deployed to Railway.app cloud hosting
-- Resolved Discord token authentication issues on Railway
-- Added debugging logs for Railway environment variables
 
 ### 5. Gold Coin Loan System Implementation
 - **Database Schema**: Added `loans` table with comprehensive loan tracking
@@ -142,21 +138,17 @@ gamba-bot/
 - `CLIENT_ID` - Bot application ID (optional)
 
 ## Deployment Notes
-- **Platform**: Railway.app (free tier)
-- **Auto-deploy**: Connected to GitHub repository
-- **Database**: SQLite file persists in Railway deployment
-- **Status**: Successfully deployed and running 24/7
+- **Database**: SQLite file (gamba.db) stores all user and loan data locally
 
 ## Known Issues Resolved
 1. ✅ Discord API "message_reference unknown message" errors - Fixed with safeReply()
-2. ✅ Railway deployment TokenInvalid errors - Resolved through proper environment variable configuration
-3. ✅ Bot permissions documentation missing - Added to README.md
-4. ✅ Loan system integration - Successfully implemented with automated daily processing
-5. ✅ Database schema expansion - Added loans table without breaking existing functionality
+2. ✅ Bot permissions documentation missing - Added to README.md  
+3. ✅ Loan system integration - Successfully implemented with automated daily processing
+4. ✅ Database schema expansion - Added loans table without breaking existing functionality
+5. ✅ Payment amount display bug - Fixed string replacement in loan payoff messages
 
 ## Future Considerations Discussed
-- Alternative hosting platforms (Render, fly.io, Koyeb) for better free tiers
-- Railway free tier limitations and potential migration options
+- Alternative hosting platforms (Render, fly.io, Koyeb) as needed
 
 ## Development Environment
 - **Working Directory**: C:\Users\ryanc\VS Code Projects\gamba-bot
@@ -167,12 +159,11 @@ gamba-bot/
 ## Security Notes
 - .env files excluded from git commits
 - Database file (gamba.db) excluded from repository
-- Bot token secured in Railway environment variables
+- Bot token stored securely in environment variables
 - No hardcoded sensitive information in codebase
 
 ## Testing Status
 - ✅ Local development tested and working
-- ✅ Railway deployment tested and working
 - ✅ Discord bot commands functional
 - ✅ Error handling tested and working
 - ✅ Database operations confirmed working
@@ -180,6 +171,7 @@ gamba-bot/
 - ✅ Loan command syntax and logic verified
 - ✅ Daily scheduler implementation tested
 - ✅ JavaScript syntax validation passed for all loan features
+- ✅ Payment amount display fix verified
 
 ## Project Maintainer
 - GitHub: RyanCGit
