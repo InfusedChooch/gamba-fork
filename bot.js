@@ -1000,7 +1000,7 @@ client.on('messageCreate', async (message) => {
         return await safeReply(message, { embeds: [embed] });
     }
 
-    if (command === 'blackjack' || command === 'bj') {
+    if (command === 'blackjack') {
         const betAmount = parseInt(args[0]);
         
         if (!betAmount || betAmount <= 0) {
