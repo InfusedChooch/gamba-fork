@@ -772,14 +772,14 @@ client.on('messageCreate', async (message) => {
         if (newLoanBalance === 0) {
             title = getRandomMessage(GOBLIN_MESSAGES.loanPayment.fullPayoff.titles);
             description = getRandomMessage(GOBLIN_MESSAGES.loanPayment.fullPayoff.descriptions)
-                .replace('{paymentAmount}', paymentAmount)
-                .replace('{userBalance}', newUserBalance);
+                .replace(/{paymentAmount}/g, paymentAmount)
+                .replace(/{userBalance}/g, newUserBalance);
         } else {
             title = getRandomMessage(GOBLIN_MESSAGES.loanPayment.success.titles);
             description = getRandomMessage(GOBLIN_MESSAGES.loanPayment.success.descriptions)
-                .replace('{paymentAmount}', paymentAmount)
-                .replace('{newBalance}', Math.round(newLoanBalance * 100) / 100)
-                .replace('{userBalance}', newUserBalance);
+                .replace(/{paymentAmount}/g, paymentAmount)
+                .replace(/{newBalance}/g, Math.round(newLoanBalance * 100) / 100)
+                .replace(/{userBalance}/g, newUserBalance);
         }
 
         const embed = new EmbedBuilder()
