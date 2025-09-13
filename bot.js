@@ -154,6 +154,81 @@ const GOBLIN_MESSAGES = {
             `**Your roll:** {playerRoll}\n**My roll:** {botRoll}\n\nBlast and bother! You beat me fair and square! Here's your **{winnings}** Gold Coins - every last one!\n\n💰 Your vault shows: **{newBalance}** Gold Coins\n\nSavor this victory, friend. They don't come often in my establishment!`
         ]
     },
+    loans: {
+        approval: {
+            titles: [
+                '🏦 Loan Approved, Friend!',
+                '💰 Deal Struck!',
+                '📋 Contract Signed!',
+                '🤝 We Got a Deal!'
+            ],
+            descriptions: [
+                `Excellent! I've fronted you **{amount}** Gold Coins at a fair rate of **18% APR** (that's 0.05% daily, friend).\n\n📊 **Loan Details:**\n• Principal: **{amount}** Gold Coins\n• Daily Interest: **0.05%**\n• Minimum Payment: **3%** of balance or **25** coins daily\n• Payment Time: **Midnight EST**\n\n💰 Your vault now holds: **{newBalance}** Gold Coins\n\nRemember: Pay on time or face the consequences! Business is business!`,
+                `Well well! You're now **{amount}** Gold Coins richer, but remember - nothing's free in this world!\n\n📋 **Your Loan Terms:**\n• Amount Borrowed: **{amount}** Gold Coins\n• Interest Rate: **18% APR** (0.05% daily)\n• Daily Payment: **3%** minimum or **25** coins\n• Due Daily: **Midnight EST**\n\n💰 Updated balance: **{newBalance}** Gold Coins\n\nDon't be late with payments, capisce? I've got a business to run!`
+            ]
+        },
+        denial: {
+            titles: [
+                '🚫 No Dice, Friend!',
+                '❌ Loan Denied!',
+                '🛑 Can\'t Do It!',
+                '💸 Too Risky!'
+            ],
+            descriptions: [
+                `Whoa there, big spender! You already got **{existingLoans}** active loans! I may be generous, but I ain't stupid!\n\nPay off your current debts before asking for more, capisce?`,
+                `Nice try, but you're already in hock for **{totalDebt}** Gold Coins! Can't loan you more until you settle up!\n\nCome back when your books are cleaner, friend!`,
+                `Hold up! You want **{amount}** coins but you only got **{balance}** to your name! Even as collateral, that's too risky for this goblin!\n\nBuild up some savings first, then we'll talk!`
+            ]
+        }
+    },
+    loanStatus: {
+        active: {
+            titles: [
+                '📋 Your Outstanding Debts',
+                '💸 What You Owe Me',
+                '🏦 Loan Portfolio',
+                '📊 Debt Summary'
+            ]
+        },
+        suspended: {
+            titles: [
+                '🚫 Account Suspended!',
+                '⛔ No Gambling for You!',
+                '🔒 Privileges Revoked!',
+                '💀 You\'re Cut Off!'
+            ],
+            descriptions: [
+                `Listen here, deadbeat! You've missed **{missedPayments}** payments and now you're SUSPENDED from gambling!\n\nPay up your debts before you can roll again, capisce?`,
+                `Hah! Think you can just ignore your debts? **{missedPayments}** missed payments means no more games until you pay!\n\nMoney talks, and yours ain't saying much!`
+            ]
+        }
+    },
+    loanPayment: {
+        success: {
+            titles: [
+                '💰 Payment Received!',
+                '✅ Debt Reduced!',
+                '🏦 Thank You!',
+                '📊 Books Updated!'
+            ],
+            descriptions: [
+                `Good on you! **{paymentAmount}** Gold Coins received and applied to your loan!\n\n📊 **Updated Loan Status:**\n• Remaining Balance: **{newBalance}** Gold Coins\n• Your Vault: **{userBalance}** Gold Coins\n\nKeep this up and you'll be debt-free in no time!`,
+                `Excellent! Your **{paymentAmount}** coin payment has been processed!\n\n💰 **New Totals:**\n• Loan Balance: **{newBalance}** Gold Coins\n• Your Balance: **{userBalance}** Gold Coins\n\nPrompt payments keep the business flowing, friend!`
+            ]
+        },
+        fullPayoff: {
+            titles: [
+                '🎉 DEBT FREE!',
+                '✨ Loan Cleared!',
+                '🏆 All Paid Up!',
+                '💸 No More Debt!'
+            ],
+            descriptions: [
+                `Outstanding! You've paid off your entire loan with **{paymentAmount}** Gold Coins!\n\n🎊 **CONGRATULATIONS!** 🎊\n• Final Payment: **{paymentAmount}** Gold Coins\n• Your Vault: **{userBalance}** Gold Coins\n• Status: **DEBT FREE!**\n\nPleasure doing business! Come back anytime you need more coin!`,
+                `Bravo! **{paymentAmount}** Gold Coins and you're COMPLETELY PAID OFF!\n\n🏆 **LOAN CLEARED!** 🏆\n• Total Paid: All of it!\n• Remaining Balance: **0** Gold Coins\n• Your Status: **CLEAN SLATE!**\n\nYou're welcome back anytime, friend! Heh heh heh...`
+            ]
+        }
+    },
     losses: {
         titles: [
             '😈 Hah! Better Luck Next Time!',
@@ -205,9 +280,94 @@ function hasAdminAccess(member) {
     return hasRole(member, ADMIN_ROLE);
 }
 
+// Daily loan processing function
+async function processDailyLoans() {
+    console.log('🕛 Processing daily loan payments and interest...');
+    
+    try {
+        const activeLoans = await db.getAllActiveLoans();
+        console.log(`Found ${activeLoans.length} active loans to process.`);
+        
+        for (const loan of activeLoans) {
+            const now = new Date();
+            const nextPaymentDue = new Date(loan.next_payment_due);
+            
+            // Skip if payment isn't due yet
+            if (now < nextPaymentDue) continue;
+            
+            // Calculate daily interest (0.05% daily = 18% APR)
+            const interestAmount = loan.current_balance * loan.daily_interest_rate;
+            const newBalance = loan.current_balance + interestAmount;
+            
+            // Calculate minimum payment (3% of balance or 25 coins minimum)
+            const minimumPayment = Math.max(25, Math.ceil(newBalance * 0.03));
+            
+            // Get user's current balance
+            const user = await db.getUser(loan.user_id);
+            if (!user) continue;
+            
+            console.log(`Processing loan ${loan.loan_id} for user ${loan.user_id}: Balance ${loan.current_balance}, Interest ${interestAmount}, Min Payment ${minimumPayment}`);
+            
+            if (user.gold_coins >= minimumPayment) {
+                // User can afford minimum payment
+                const finalBalance = Math.max(0, newBalance - minimumPayment);
+                const userNewBalance = user.gold_coins - minimumPayment;
+                
+                // Record payment and update balances
+                await db.recordLoanPayment(loan.loan_id, minimumPayment, finalBalance);
+                await db.updateGoldCoins(loan.user_id, userNewBalance);
+                
+                console.log(`✅ Auto payment processed: ${minimumPayment} coins, remaining loan balance: ${finalBalance}`);
+            } else {
+                // User cannot afford payment
+                const lateFee = 50;
+                const finalBalance = newBalance + lateFee;
+                const newMissedPayments = loan.missed_payments + 1;
+                const shouldSuspend = newMissedPayments >= 3;
+                
+                // Update loan with interest, late fee, and missed payment
+                await db.updateLoan(loan.loan_id, finalBalance, newMissedPayments, shouldSuspend);
+                
+                console.log(`❌ Payment missed for loan ${loan.loan_id}. New balance: ${finalBalance}, Missed payments: ${newMissedPayments}, Suspended: ${shouldSuspend}`);
+            }
+        }
+        
+        console.log('✅ Daily loan processing completed.');
+    } catch (error) {
+        console.error('❌ Error processing daily loans:', error);
+    }
+}
+
+// Schedule daily loan processing at 4 AM UTC (Midnight EST)
+function scheduleDailyLoanProcessing() {
+    const now = new Date();
+    const nextRun = new Date();
+    
+    // Set next run to 4 AM UTC (Midnight EST)
+    nextRun.setUTCHours(4, 0, 0, 0);
+    
+    // If 4 AM UTC has already passed today, schedule for tomorrow
+    if (now.getUTCHours() >= 4) {
+        nextRun.setUTCDate(nextRun.getUTCDate() + 1);
+    }
+    
+    const timeUntilNextRun = nextRun.getTime() - now.getTime();
+    
+    console.log(`📅 Next loan processing scheduled for: ${nextRun.toISOString()} (in ${Math.round(timeUntilNextRun / 1000 / 60)} minutes)`);
+    
+    setTimeout(() => {
+        processDailyLoans();
+        // Schedule the next run (24 hours later)
+        setInterval(processDailyLoans, 24 * 60 * 60 * 1000);
+    }, timeUntilNextRun);
+}
+
 client.once('ready', () => {
     console.log(`${client.user.tag} is online and ready to make some deals! Heh heh heh...`);
     console.log('Bot successfully deployed on Railway!');
+    
+    // Start daily loan processing scheduler
+    scheduleDailyLoanProcessing();
 });
 
 client.on('messageCreate', async (message) => {
@@ -264,6 +424,21 @@ client.on('messageCreate', async (message) => {
                     inline: false
                 },
                 {
+                    name: '🏦 !loan <amount>',
+                    value: 'Borrow Gold Coins at 18% APR! Daily payments at midnight EST!\n*Example: `!loan 500`*',
+                    inline: false
+                },
+                {
+                    name: '📊 !loanstatus',
+                    value: 'Check your outstanding debts and payment schedules!',
+                    inline: false
+                },
+                {
+                    name: '💸 !payloan <amount>',
+                    value: 'Make a payment toward your loan balance!\n*Example: `!payloan 100`*',
+                    inline: false
+                },
+                {
                     name: '❓ !help',
                     value: 'Shows this here menu of services!',
                     inline: false
@@ -298,8 +473,13 @@ client.on('messageCreate', async (message) => {
                 inline: false
             },
             {
+                name: '🏦 Loan System:',
+                value: '• Borrow coins at **18% APR** (0.05% daily interest)\n• Minimum payment: **3%** of balance or **25 coins**\n• Miss 3 payments = Gambling suspended!\n• Late fee: **50 Gold Coins** per missed payment',
+                inline: false
+            },
+            {
                 name: '🏆 House Rules:',
-                value: '• You need the **Gamba Bot Member** role to play\n• No credit - pay up front or no deal!\n• All transactions are final, capisce?',
+                value: '• You need the **Gamba Bot Member** role to play\n• Pay your debts or face the consequences!\n• All transactions are final, capisce?',
                 inline: false
             }
         );
@@ -390,7 +570,24 @@ client.on('messageCreate', async (message) => {
         return await safeReply(message, { embeds: [embed] });
     }
 
+    // Check if user is suspended from gambling
     if (command === 'roll') {
+        const isSuspended = await db.getUserSuspensionStatus(message.author.id);
+        if (isSuspended) {
+            const userLoans = await db.getUserLoans(message.author.id);
+            const totalMissedPayments = userLoans.reduce((sum, loan) => sum + loan.missed_payments, 0);
+            
+            const title = getRandomMessage(GOBLIN_MESSAGES.loanStatus.suspended.titles);
+            const description = getRandomMessage(GOBLIN_MESSAGES.loanStatus.suspended.descriptions)
+                .replace('{missedPayments}', totalMissedPayments);
+            
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle(title)
+                .setDescription(description);
+            return await safeReply(message, { embeds: [embed] });
+        }
+
         const betAmount = parseInt(args[0]);
         
         if (!betAmount || betAmount <= 0) {
@@ -450,6 +647,171 @@ client.on('messageCreate', async (message) => {
             .setColor(resultColor)
             .setTitle(resultTitle)
             .setDescription(resultDesc);
+        
+        return await safeReply(message, { embeds: [embed] });
+    }
+
+    if (command === 'loan') {
+        const loanAmount = parseInt(args[0]);
+        
+        if (!loanAmount || loanAmount <= 0) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('📝 Invalid Loan Amount!')
+                .setDescription('Listen here, friend! You gotta specify a valid loan amount!\n*Example: `!loan 500`*');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        // Check for existing loans
+        const existingLoans = await db.getUserLoans(message.author.id);
+        if (existingLoans.length > 0) {
+            const totalDebt = existingLoans.reduce((sum, loan) => sum + loan.current_balance, 0);
+            const title = getRandomMessage(GOBLIN_MESSAGES.loans.denial.titles);
+            let description = getRandomMessage(GOBLIN_MESSAGES.loans.denial.descriptions);
+            
+            if (description.includes('{existingLoans}')) {
+                description = description.replace('{existingLoans}', existingLoans.length);
+            } else if (description.includes('{totalDebt}')) {
+                description = description.replace('{totalDebt}', Math.round(totalDebt));
+            }
+            
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle(title)
+                .setDescription(description);
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        // Risk assessment - require some collateral
+        const minRequiredBalance = loanAmount * 0.1; // 10% of loan amount
+        if (user.gold_coins < minRequiredBalance) {
+            const title = getRandomMessage(GOBLIN_MESSAGES.loans.denial.titles);
+            const description = getRandomMessage(GOBLIN_MESSAGES.loans.denial.descriptions)
+                .replace('{amount}', loanAmount)
+                .replace('{balance}', user.gold_coins);
+            
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle(title)
+                .setDescription(description);
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        // Create the loan
+        const loan = await db.createLoan(message.author.id, loanAmount);
+        const newBalance = user.gold_coins + loanAmount;
+        await db.updateGoldCoins(message.author.id, newBalance);
+
+        const title = getRandomMessage(GOBLIN_MESSAGES.loans.approval.titles);
+        const description = getRandomMessage(GOBLIN_MESSAGES.loans.approval.descriptions)
+            .replace(/{amount}/g, loanAmount)
+            .replace('{newBalance}', newBalance);
+
+        const embed = new EmbedBuilder()
+            .setColor('#00ff00')
+            .setTitle(title)
+            .setDescription(description);
+        
+        return await safeReply(message, { embeds: [embed] });
+    }
+
+    if (command === 'loanstatus' || command === 'loans') {
+        const userLoans = await db.getUserLoans(message.author.id);
+        
+        if (userLoans.length === 0) {
+            const embed = new EmbedBuilder()
+                .setColor('#00ff88')
+                .setTitle('✨ Debt Free!')
+                .setDescription('Excellent! You don\'t owe me a single Gold Coin, friend!\n\nYour credit is clean and ready for business! Want to take out a loan? Just use `!loan <amount>`');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        const title = getRandomMessage(GOBLIN_MESSAGES.loanStatus.active.titles);
+        let description = 'Here\'s what you owe me, friend:\n\n';
+        let totalDebt = 0;
+
+        userLoans.forEach((loan, index) => {
+            const balance = Math.round(loan.current_balance * 100) / 100;
+            const minPayment = Math.max(25, Math.ceil(balance * 0.03));
+            const nextDue = new Date(loan.next_payment_due).toLocaleDateString();
+            
+            description += `**Loan #${index + 1}:**\n`;
+            description += `• Balance: **${balance}** Gold Coins\n`;
+            description += `• Min Payment: **${minPayment}** Gold Coins\n`;
+            description += `• Next Due: **${nextDue}**\n`;
+            description += `• Missed Payments: **${loan.missed_payments}**\n`;
+            if (loan.is_suspended) description += `• Status: **🚫 SUSPENDED**\n`;
+            description += '\n';
+            
+            totalDebt += balance;
+        });
+
+        description += `💰 **Total Debt:** **${Math.round(totalDebt * 100) / 100}** Gold Coins`;
+
+        const embed = new EmbedBuilder()
+            .setColor('#ffd700')
+            .setTitle(title)
+            .setDescription(description)
+            .setFooter({ text: 'Use !payloan <amount> to make a payment!' });
+        
+        return await safeReply(message, { embeds: [embed] });
+    }
+
+    if (command === 'payloan' || command === 'paydebt') {
+        const paymentAmount = parseInt(args[0]);
+        
+        if (!paymentAmount || paymentAmount <= 0) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('📝 Invalid Payment Amount!')
+                .setDescription('Come on, friend! Specify how much you want to pay!\n*Example: `!payloan 100`*');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        if (paymentAmount > user.gold_coins) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('💸 Insufficient Funds!')
+                .setDescription(`You want to pay **${paymentAmount}** Gold Coins but only got **${user.gold_coins}** in your vault!\n\nCan't pay what you don't have, capisce?`);
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        const userLoans = await db.getUserLoans(message.author.id);
+        if (userLoans.length === 0) {
+            const embed = new EmbedBuilder()
+                .setColor('#00ff88')
+                .setTitle('✨ No Debts!')
+                .setDescription('Hold up there! You don\'t owe me anything, friend!\n\nYour slate is clean!');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        // Apply payment to oldest loan first
+        const loan = userLoans[0];
+        const newLoanBalance = Math.max(0, loan.current_balance - paymentAmount);
+        const newUserBalance = user.gold_coins - paymentAmount;
+
+        await db.recordLoanPayment(loan.loan_id, paymentAmount, newLoanBalance);
+        await db.updateGoldCoins(message.author.id, newUserBalance);
+
+        let title, description;
+        
+        if (newLoanBalance === 0) {
+            title = getRandomMessage(GOBLIN_MESSAGES.loanPayment.fullPayoff.titles);
+            description = getRandomMessage(GOBLIN_MESSAGES.loanPayment.fullPayoff.descriptions)
+                .replace('{paymentAmount}', paymentAmount)
+                .replace('{userBalance}', newUserBalance);
+        } else {
+            title = getRandomMessage(GOBLIN_MESSAGES.loanPayment.success.titles);
+            description = getRandomMessage(GOBLIN_MESSAGES.loanPayment.success.descriptions)
+                .replace('{paymentAmount}', paymentAmount)
+                .replace('{newBalance}', Math.round(newLoanBalance * 100) / 100)
+                .replace('{userBalance}', newUserBalance);
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor('#00ff00')
+            .setTitle(title)
+            .setDescription(description);
         
         return await safeReply(message, { embeds: [embed] });
     }
