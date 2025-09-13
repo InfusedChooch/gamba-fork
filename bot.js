@@ -790,7 +790,7 @@ client.on('messageCreate', async (message) => {
         return await safeReply(message, { embeds: [embed] });
     }
 
-    if (command === 'forgiveloan' || command === 'cleardebt') {
+    if (command === 'forgiveloan') {
         if (!hasAdminAccess(message.member)) {
             const embed = new EmbedBuilder()
                 .setColor('#ff0000')
