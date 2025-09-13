@@ -82,6 +82,86 @@ const db = new Database();
 const MEMBER_ROLE = 'Gamba Bot Member';
 const ADMIN_ROLE = 'Gamba Bot Admin';
 
+// Blackjack game storage
+const activeBlackjackGames = new Map();
+
+// Blackjack card system
+const SUITS = ['♠️', '♥️', '♦️', '♣️'];
+const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+function createDeck() {
+    const deck = [];
+    for (const suit of SUITS) {
+        for (const rank of RANKS) {
+            deck.push({ suit, rank });
+        }
+    }
+    return shuffleDeck(deck);
+}
+
+function shuffleDeck(deck) {
+    const shuffled = [...deck];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+}
+
+function getCardValue(card, currentTotal = 0) {
+    if (card.rank === 'A') {
+        // Ace is 11 unless it would bust, then it's 1
+        return (currentTotal + 11 > 21) ? 1 : 11;
+    } else if (['J', 'Q', 'K'].includes(card.rank)) {
+        return 10;
+    } else {
+        return parseInt(card.rank);
+    }
+}
+
+function calculateHandValue(hand) {
+    let total = 0;
+    let aces = 0;
+    
+    // Count non-ace cards first
+    for (const card of hand) {
+        if (card.rank === 'A') {
+            aces++;
+        } else if (['J', 'Q', 'K'].includes(card.rank)) {
+            total += 10;
+        } else {
+            total += parseInt(card.rank);
+        }
+    }
+    
+    // Add aces (optimize for highest value without busting)
+    for (let i = 0; i < aces; i++) {
+        if (total + 11 <= 21) {
+            total += 11;
+        } else {
+            total += 1;
+        }
+    }
+    
+    return total;
+}
+
+function formatHand(hand, hideFirstCard = false) {
+    if (hideFirstCard && hand.length > 0) {
+        const visibleCards = hand.slice(1);
+        return `🃏 ${visibleCards.map(card => `${card.rank}${card.suit}`).join(' ')}`;
+    }
+    return hand.map(card => `${card.rank}${card.suit}`).join(' ');
+}
+
+function isBlackjack(hand) {
+    return hand.length === 2 && calculateHandValue(hand) === 21;
+}
+
+function isBust(hand) {
+    return calculateHandValue(hand) > 21;
+}
+
 // Goblin message pools for variety
 const GOBLIN_MESSAGES = {
     accessDenied: {
@@ -214,6 +294,76 @@ const GOBLIN_MESSAGES = {
             descriptions: [
                 `Outstanding! You've paid off your entire loan with **{paymentAmount}** Gold Coins!\n\n🎊 **CONGRATULATIONS!** 🎊\n• Final Payment: **{paymentAmount}** Gold Coins\n• Your Vault: **{userBalance}** Gold Coins\n• Status: **DEBT FREE!**\n\nPleasure doing business! Come back anytime you need more coin!`,
                 `Bravo! **{paymentAmount}** Gold Coins and you're COMPLETELY PAID OFF!\n\n🏆 **LOAN CLEARED!** 🏆\n• Total Paid: All of it!\n• Remaining Balance: **0** Gold Coins\n• Your Status: **CLEAN SLATE!**\n\nYou're welcome back anytime, friend! Heh heh heh...`
+            ]
+        }
+    },
+    blackjack: {
+        gameStart: {
+            titles: [
+                '🃏 Cards on the Table!',
+                '♠️ Let\'s Play Blackjack!',
+                '🎰 Twenty-One Time!',
+                '♥️ Deal \'Em Up!'
+            ]
+        },
+        playerWin: {
+            titles: [
+                '🎉 Twenty-One! You Win!',
+                '✨ Blackjack Winner!',
+                '🏆 Beat the House!',
+                '💰 Lucky Hand!'
+            ],
+            descriptions: [
+                `Blast it all! You got **{result}** and beat my **{dealerTotal}**!\n\nYour **{betAmount}** Gold Coins just became **{winnings}** Gold Coins!\n\n💰 Your vault now holds: **{newBalance}** Gold Coins\n\nEnjoy your luck while it lasts, friend!`,
+                `Curses! Your **{result}** beats my measly **{dealerTotal}**!\n\nTake your **{winnings}** Gold Coins and don't let it go to your head!\n\n💰 New balance: **{newBalance}** Gold Coins\n\nThe cards were with you this time...`
+            ]
+        },
+        playerBlackjack: {
+            titles: [
+                '🃏 BLACKJACK! Outstanding!',
+                '✨ Natural Twenty-One!',
+                '🏆 Perfect Hand!',
+                '💎 Blackjack Beauty!'
+            ],
+            descriptions: [
+                `BLACKJACK! **{playerHand}** - A natural twenty-one!\n\nThat's **{winnings}** Gold Coins at 1.5x payout, friend!\n\n💰 Your vault shows: **{newBalance}** Gold Coins\n\nNow THAT'S what I call a perfect hand! Well played!`,
+                `By my beard! A natural blackjack with **{playerHand}**!\n\nYour **{betAmount}** coins just became **{winnings}** at premium odds!\n\n💰 Updated balance: **{newBalance}** Gold Coins\n\nThat's the kind of hand legends are made of!`
+            ]
+        },
+        dealerWin: {
+            titles: [
+                '😈 House Advantage!',
+                '💸 Better Luck Next Hand!',
+                '🃏 Dealer Takes It!',
+                '😆 Cards Favor the House!'
+            ],
+            descriptions: [
+                `My **{dealerTotal}** beats your **{playerTotal}**!\n\nThose **{betAmount}** Gold Coins? Mine now!\n\n💸 Your vault balance: **{newBalance}** Gold Coins\n\nThat's how the game goes, friend! Try again!`,
+                `Hah! **{dealerTotal}** for me, **{playerTotal}** for you!\n\nI'll take those **{betAmount}** Gold Coins, thank you!\n\n💸 Remaining balance: **{newBalance}** Gold Coins\n\nThe house edge never sleeps!`
+            ]
+        },
+        playerBust: {
+            titles: [
+                '💥 BUST! Over Twenty-One!',
+                '💸 Too Greedy, Friend!',
+                '🃏 Busted Hand!',
+                '😆 Went Too Far!'
+            ],
+            descriptions: [
+                `BUST! Your hand totaled **{playerTotal}** - over twenty-one!\n\n💸 Those **{betAmount}** Gold Coins are mine!\n\nVault balance: **{newBalance}** Gold Coins\n\nKnow when to stand, friend!`,
+                `Ohohoho! **{playerTotal}** is a bust! Too greedy!\n\n💸 **{betAmount}** Gold Coins in my pocket!\n\nBalance: **{newBalance}** Gold Coins\n\nSometimes less is more!`
+            ]
+        },
+        push: {
+            titles: [
+                '🤝 Push - It\'s a Tie!',
+                '↔️ Even Steven!',
+                '🤷 Nobody Wins!',
+                '⚖️ Perfectly Balanced!'
+            ],
+            descriptions: [
+                `We both got **{total}** - it's a push!\n\nYour **{betAmount}** Gold Coins stay right where they are!\n\n💰 Vault balance: **{balance}** Gold Coins\n\nWell, that was anticlimactic!`,
+                `**{total}** for both of us! Nobody wins, nobody loses!\n\nKeep your **{betAmount}** Gold Coins for another round!\n\n💰 Balance unchanged: **{balance}** Gold Coins\n\nThat's what I call a standoff!`
             ]
         }
     },
@@ -410,6 +560,21 @@ client.on('messageCreate', async (message) => {
                     inline: false
                 },
                 {
+                    name: '🃏 !blackjack <amount>',
+                    value: 'Play blackjack against the house! Get 21 or close to beat the dealer!\n*Example: `!blackjack 50`*',
+                    inline: false
+                },
+                {
+                    name: '👆 !hit',
+                    value: 'Draw another card in your active blackjack game!',
+                    inline: true
+                },
+                {
+                    name: '✋ !stand',
+                    value: 'Keep your current hand and let the dealer play!',
+                    inline: true
+                },
+                {
                     name: '🏦 !loan <amount>',
                     value: 'Borrow Gold Coins at 18% APR! Daily payments at midnight EST!\n*Example: `!loan 500`*',
                     inline: false
@@ -460,7 +625,7 @@ client.on('messageCreate', async (message) => {
         embed.addFields(
             {
                 name: '📋 How It Works:',
-                value: '• Everyone starts with **1000 Gold Coins**\n• Roll 1-100, highest roll wins\n• Win = Get double your bet back\n• Lose = I keep your coins! Heh heh...',
+                value: '• Everyone starts with **1000 Gold Coins**\n• **Roll:** 1-100, highest roll wins (2x payout)\n• **Blackjack:** Get 21 or beat dealer (2x payout, 2.5x for blackjack!)\n• Lose = I keep your coins! Heh heh...',
                 inline: false
             },
             {
@@ -832,6 +997,260 @@ client.on('messageCreate', async (message) => {
             .setDescription(`Alright boss, I've wiped the slate clean for ${targetUser}!\n\n💸 **Debt Forgiven:**\n• Total Amount: **${roundedDebt}** Gold Coins\n• Loans Cleared: **${userLoans.length}**\n• Status: **DEBT FREE!**\n\nThat's some serious generosity, boss! The books have been updated accordingly.`)
             .setFooter({ text: 'Remember: With great power comes great responsibility!' });
         
+        return await safeReply(message, { embeds: [embed] });
+    }
+
+    if (command === 'blackjack' || command === 'bj') {
+        const betAmount = parseInt(args[0]);
+        
+        if (!betAmount || betAmount <= 0) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🃏 Invalid Bet Amount!')
+                .setDescription('Listen here, friend! You gotta put down some real coin for blackjack!\n*Example: `!blackjack 100`*');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        if (betAmount > user.gold_coins) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('💸 Insufficient Funds for Blackjack!')
+                .setDescription(`You want to bet **${betAmount}** Gold Coins but only got **${user.gold_coins}** in your vault!\n\nCan't play what you can't afford, capisce?`);
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        // Check if user already has an active game
+        if (activeBlackjackGames.has(message.author.id)) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🃏 Game Already in Progress!')
+                .setDescription('Hold up there! You already got cards on the table!\n\nFinish your current hand with `!hit` or `!stand` before starting a new game!');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        // Start new blackjack game
+        const deck = createDeck();
+        const playerHand = [deck.pop(), deck.pop()];
+        const dealerHand = [deck.pop(), deck.pop()];
+        
+        const game = {
+            userId: message.author.id,
+            betAmount: betAmount,
+            deck: deck,
+            playerHand: playerHand,
+            dealerHand: dealerHand,
+            gameOver: false,
+            channelId: message.channel.id
+        };
+
+        activeBlackjackGames.set(message.author.id, game);
+
+        const playerTotal = calculateHandValue(playerHand);
+        const dealerUpCard = dealerHand[1];
+        const dealerUpValue = getCardValue(dealerUpCard);
+
+        // Check for immediate blackjack
+        if (isBlackjack(playerHand)) {
+            const dealerTotal = calculateHandValue(dealerHand);
+            
+            if (isBlackjack(dealerHand)) {
+                // Push - both have blackjack
+                activeBlackjackGames.delete(message.author.id);
+                const title = getRandomMessage(GOBLIN_MESSAGES.blackjack.push.titles);
+                const description = getRandomMessage(GOBLIN_MESSAGES.blackjack.push.descriptions)
+                    .replace(/{total}/g, 21)
+                    .replace(/{betAmount}/g, betAmount)
+                    .replace(/{balance}/g, user.gold_coins);
+
+                const embed = new EmbedBuilder()
+                    .setColor('#ffd700')
+                    .setTitle(title)
+                    .setDescription(description)
+                    .addFields(
+                        { name: '🃏 Your Hand', value: `${formatHand(playerHand)} = **${playerTotal}**`, inline: true },
+                        { name: '🎰 Dealer Hand', value: `${formatHand(dealerHand)} = **${dealerTotal}**`, inline: true }
+                    );
+                return await safeReply(message, { embeds: [embed] });
+            } else {
+                // Player blackjack wins
+                const winnings = Math.floor(betAmount * 2.5); // 1.5x payout for blackjack
+                const newBalance = user.gold_coins + winnings - betAmount;
+                await db.updateGoldCoins(message.author.id, newBalance);
+                activeBlackjackGames.delete(message.author.id);
+
+                const title = getRandomMessage(GOBLIN_MESSAGES.blackjack.playerBlackjack.titles);
+                const description = getRandomMessage(GOBLIN_MESSAGES.blackjack.playerBlackjack.descriptions)
+                    .replace(/{playerHand}/g, formatHand(playerHand))
+                    .replace(/{betAmount}/g, betAmount)
+                    .replace(/{winnings}/g, winnings)
+                    .replace(/{newBalance}/g, newBalance);
+
+                const embed = new EmbedBuilder()
+                    .setColor('#00ff00')
+                    .setTitle(title)
+                    .setDescription(description)
+                    .addFields(
+                        { name: '🃏 Your Hand', value: `${formatHand(playerHand)} = **${playerTotal}** (BLACKJACK!)`, inline: true },
+                        { name: '🎰 Dealer Hand', value: `${formatHand(dealerHand)} = **${calculateHandValue(dealerHand)}**`, inline: true }
+                    );
+                return await safeReply(message, { embeds: [embed] });
+            }
+        }
+
+        // Regular game start
+        const title = getRandomMessage(GOBLIN_MESSAGES.blackjack.gameStart.titles);
+        const embed = new EmbedBuilder()
+            .setColor('#0099ff')
+            .setTitle(title)
+            .setDescription(`Alright friend, let's see what the cards have in store for us!\n\n**Bet:** ${betAmount} Gold Coins\n**Your balance:** ${user.gold_coins} Gold Coins`)
+            .addFields(
+                { name: '🃏 Your Hand', value: `${formatHand(playerHand)} = **${playerTotal}**`, inline: true },
+                { name: '🎰 Dealer Hand', value: `${formatHand(dealerHand, true)} = **${dealerUpValue}+**`, inline: true },
+                { name: '🎮 Your Move', value: 'Use `!hit` to draw another card or `!stand` to keep your current hand!', inline: false }
+            );
+
+        return await safeReply(message, { embeds: [embed] });
+    }
+
+    if (command === 'hit') {
+        const game = activeBlackjackGames.get(message.author.id);
+        
+        if (!game) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🃏 No Active Game!')
+                .setDescription('You don\'t have any cards on the table, friend!\n\nStart a new game with `!blackjack <amount>`');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        if (game.gameOver) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🃏 Game Already Finished!')
+                .setDescription('This hand is already over! Start a new game with `!blackjack <amount>`');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        // Draw a card
+        const newCard = game.deck.pop();
+        game.playerHand.push(newCard);
+        const playerTotal = calculateHandValue(game.playerHand);
+
+        if (isBust(game.playerHand)) {
+            // Player busted
+            const newBalance = user.gold_coins - game.betAmount;
+            await db.updateGoldCoins(message.author.id, newBalance);
+            activeBlackjackGames.delete(message.author.id);
+
+            const title = getRandomMessage(GOBLIN_MESSAGES.blackjack.playerBust.titles);
+            const description = getRandomMessage(GOBLIN_MESSAGES.blackjack.playerBust.descriptions)
+                .replace(/{playerTotal}/g, playerTotal)
+                .replace(/{betAmount}/g, game.betAmount)
+                .replace(/{newBalance}/g, newBalance);
+
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle(title)
+                .setDescription(description)
+                .addFields(
+                    { name: '🃏 Your Hand', value: `${formatHand(game.playerHand)} = **${playerTotal}** (BUST!)`, inline: true },
+                    { name: '🎰 Dealer Hand', value: `${formatHand(game.dealerHand, true)}`, inline: true }
+                );
+            return await safeReply(message, { embeds: [embed] });
+        } else {
+            // Still in play
+            const dealerUpValue = getCardValue(game.dealerHand[1]);
+            const embed = new EmbedBuilder()
+                .setColor('#0099ff')
+                .setTitle('🃏 Card Drawn!')
+                .setDescription(`You drew **${newCard.rank}${newCard.suit}**!\n\n**Your total:** ${playerTotal}`)
+                .addFields(
+                    { name: '🃏 Your Hand', value: `${formatHand(game.playerHand)} = **${playerTotal}**`, inline: true },
+                    { name: '🎰 Dealer Hand', value: `${formatHand(game.dealerHand, true)} = **${dealerUpValue}+**`, inline: true },
+                    { name: '🎮 Your Move', value: 'Use `!hit` for another card or `!stand` to end your turn!', inline: false }
+                );
+            return await safeReply(message, { embeds: [embed] });
+        }
+    }
+
+    if (command === 'stand') {
+        const game = activeBlackjackGames.get(message.author.id);
+        
+        if (!game) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🃏 No Active Game!')
+                .setDescription('You don\'t have any cards on the table, friend!\n\nStart a new game with `!blackjack <amount>`');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        if (game.gameOver) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🃏 Game Already Finished!')
+                .setDescription('This hand is already over! Start a new game with `!blackjack <amount>`');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        // Dealer plays
+        while (calculateHandValue(game.dealerHand) < 17) {
+            game.dealerHand.push(game.deck.pop());
+        }
+
+        const playerTotal = calculateHandValue(game.playerHand);
+        const dealerTotal = calculateHandValue(game.dealerHand);
+        const dealerBusted = isBust(game.dealerHand);
+
+        activeBlackjackGames.delete(message.author.id);
+
+        let title, description, color, newBalance;
+
+        if (dealerBusted || playerTotal > dealerTotal) {
+            // Player wins
+            const winnings = game.betAmount * 2;
+            newBalance = user.gold_coins + game.betAmount; // Net gain is bet amount
+            await db.updateGoldCoins(message.author.id, newBalance);
+
+            title = getRandomMessage(GOBLIN_MESSAGES.blackjack.playerWin.titles);
+            description = getRandomMessage(GOBLIN_MESSAGES.blackjack.playerWin.descriptions)
+                .replace(/{result}/g, dealerBusted ? `${playerTotal} (dealer busted!)` : playerTotal)
+                .replace(/{dealerTotal}/g, dealerTotal)
+                .replace(/{betAmount}/g, game.betAmount)
+                .replace(/{winnings}/g, winnings)
+                .replace(/{newBalance}/g, newBalance);
+            color = '#00ff00';
+        } else if (playerTotal < dealerTotal) {
+            // Dealer wins
+            newBalance = user.gold_coins - game.betAmount;
+            await db.updateGoldCoins(message.author.id, newBalance);
+
+            title = getRandomMessage(GOBLIN_MESSAGES.blackjack.dealerWin.titles);
+            description = getRandomMessage(GOBLIN_MESSAGES.blackjack.dealerWin.descriptions)
+                .replace(/{dealerTotal}/g, dealerTotal)
+                .replace(/{playerTotal}/g, playerTotal)
+                .replace(/{betAmount}/g, game.betAmount)
+                .replace(/{newBalance}/g, newBalance);
+            color = '#ff0000';
+        } else {
+            // Push
+            newBalance = user.gold_coins;
+            title = getRandomMessage(GOBLIN_MESSAGES.blackjack.push.titles);
+            description = getRandomMessage(GOBLIN_MESSAGES.blackjack.push.descriptions)
+                .replace(/{total}/g, playerTotal)
+                .replace(/{betAmount}/g, game.betAmount)
+                .replace(/{balance}/g, newBalance);
+            color = '#ffd700';
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(color)
+            .setTitle(title)
+            .setDescription(description)
+            .addFields(
+                { name: '🃏 Your Hand', value: `${formatHand(game.playerHand)} = **${playerTotal}**`, inline: true },
+                { name: '🎰 Dealer Hand', value: `${formatHand(game.dealerHand)} = **${dealerTotal}**${dealerBusted ? ' (BUST!)' : ''}`, inline: true }
+            );
+
         return await safeReply(message, { embeds: [embed] });
     }
     } catch (error) {
