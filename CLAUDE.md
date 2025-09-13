@@ -14,15 +14,21 @@
 - Virtual Gold Coin currency system
 - Role-based permissions (Gamba Bot Member & Gamba Bot Admin)
 - Roll gambling game (1-25 number range)
+- **Gold Coin loan system with 18% APR and automated daily payments**
 - SQLite database for persistent user data
 - All members start with 1000 Gold Coins
 - Rich embed messages with goblin-themed responses
 - Admin commands for managing user balances
+- **Automated daily interest calculation and payment collection**
+- **Gambling suspension system for delinquent borrowers**
 
 ## Commands Available
 ### Member Commands (requires "Gamba Bot Member" role):
 - `!balance` - Check current Gold Coins
 - `!roll <amount>` - Roll dice game, bet specified amount
+- **`!loan <amount>` - Request a loan with 18% APR (0.05% daily interest)**
+- **`!loanstatus` - Check outstanding debts and payment schedules**
+- **`!payloan <amount>` - Make manual payments toward loan balance**
 - `!help` - Show available commands
 
 ### Admin Commands (requires "Gamba Bot Admin" role):
@@ -36,6 +42,16 @@
 - Lose: Lose your bet amount
 - Minimum bet: 1 Gold Coin
 - Maximum bet: Current balance
+
+## Loan System Rules
+- **Interest Rate**: 18% APR (0.05% daily interest)
+- **Collateral Required**: 10% of loan amount in existing balance
+- **Loan Limit**: One active loan per user
+- **Daily Payments**: Automatically collected at midnight EST (4 AM UTC)
+- **Minimum Payment**: 3% of balance or 25 Gold Coins (whichever is higher)
+- **Late Fee**: 50 Gold Coins per missed payment
+- **Suspension**: Miss 3 payments = Gambling privileges suspended
+- **Interest Compounding**: Continues during missed payment periods
 
 ## Required Discord Bot Permissions
 ### OAuth2 General Permissions (Permission Integer: 84992):
@@ -52,8 +68,8 @@
 ## File Structure
 ```
 gamba-bot/
-├── bot.js              # Main bot file with all commands and logic
-├── database.js         # Database management (SQLite operations)
+├── bot.js              # Main bot file with all commands, loan logic, and daily scheduler
+├── database.js         # Database management (SQLite operations + loan system)
 ├── package.json        # Dependencies and scripts
 ├── package-lock.json   # Dependency lock file
 ├── .env.example        # Environment variables template
@@ -90,9 +106,34 @@ gamba-bot/
 - Resolved Discord token authentication issues on Railway
 - Added debugging logs for Railway environment variables
 
-### 5. Files Modified
+### 5. Gold Coin Loan System Implementation
+- **Database Schema**: Added `loans` table with comprehensive loan tracking
+  - Loan ID, user ID, principal amount, current balance
+  - Daily interest rate (0.05%), payment schedules, missed payment tracking
+  - Suspension status and payment history timestamps
+  - Location: `database.js:20-34` (loans table schema)
+- **Loan Commands**: Implemented complete loan management system
+  - `!loan <amount>` - Request loans with risk assessment and collateral requirements
+  - `!loanstatus` - View outstanding debts, payment schedules, and suspension status
+  - `!payloan <amount>` - Make manual payments with automatic balance updates
+  - Location: `bot.js:549-712` (loan command handlers)
+- **Daily Processing**: Automated interest calculation and payment collection
+  - Runs daily at midnight EST (4 AM UTC) with sophisticated scheduling
+  - Processes interest compounding, minimum payment calculations
+  - Handles insufficient funds with late fees and suspension logic
+  - Location: `bot.js:284-363` (daily loan processing functions)
+- **Gambling Integration**: Suspension system prevents gambling when loans are delinquent
+  - Checks suspension status before allowing roll command
+  - Location: `bot.js:469-484` (suspension check in roll command)
+- **Goblin Messaging**: Extended themed messaging system for all loan interactions
+  - Loan approval/denial messages, payment confirmations, suspension warnings
+  - Location: `bot.js:157-231` (loan message pools)
+
+### 6. Files Modified
 - `README.md` - Added Discord OAuth2 permissions section
-- `bot.js` - Added error handling and debugging logs
+- `bot.js` - Added error handling, debugging logs, and comprehensive loan system
+- `database.js` - Added loan management methods and database schema
+- `CLAUDE.md` - Updated with loan system documentation
 - `.gitignore` - Created to exclude sensitive files
 - Git configuration set up with user: RyanCGit, email: ryancarney9@gmail.com
 
@@ -110,6 +151,8 @@ gamba-bot/
 1. ✅ Discord API "message_reference unknown message" errors - Fixed with safeReply()
 2. ✅ Railway deployment TokenInvalid errors - Resolved through proper environment variable configuration
 3. ✅ Bot permissions documentation missing - Added to README.md
+4. ✅ Loan system integration - Successfully implemented with automated daily processing
+5. ✅ Database schema expansion - Added loans table without breaking existing functionality
 
 ## Future Considerations Discussed
 - Alternative hosting platforms (Render, fly.io, Koyeb) for better free tiers
@@ -133,6 +176,10 @@ gamba-bot/
 - ✅ Discord bot commands functional
 - ✅ Error handling tested and working
 - ✅ Database operations confirmed working
+- ✅ Loan system database schema validated
+- ✅ Loan command syntax and logic verified
+- ✅ Daily scheduler implementation tested
+- ✅ JavaScript syntax validation passed for all loan features
 
 ## Project Maintainer
 - GitHub: RyanCGit
