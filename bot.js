@@ -506,9 +506,9 @@ function scheduleDailyLoanProcessing() {
     }, timeUntilNextRun);
 }
 
-client.once('ready', () => {
+client.once('clientReady', () => {
     console.log(`${client.user.tag} is online and ready to make some deals! Heh heh heh...`);
-    
+
     // Start daily loan processing scheduler
     scheduleDailyLoanProcessing();
 });
