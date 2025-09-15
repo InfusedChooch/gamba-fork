@@ -245,8 +245,10 @@ class Database {
     // Atomic transaction to create loan and update user's gold coins
     createLoanTransaction(userId, amount, dailyRate = 0.0005) {
         return new Promise((resolve, reject) => {
-            this.db.serialize(() => {
-                this.db.run('BEGIN TRANSACTION');
+            const db = this.db; // Store reference to avoid 'this' context issues
+
+            db.serialize(() => {
+                db.run('BEGIN TRANSACTION');
 
                 const nextPaymentDue = new Date();
                 nextPaymentDue.setDate(nextPaymentDue.getDate() + 1);
@@ -257,9 +259,9 @@ class Database {
                                  (user_id, principal_amount, current_balance, daily_interest_rate, next_payment_due)
                                  VALUES (?, ?, ?, ?, ?)`;
 
-                this.db.run(loanStmt, [userId, amount, amount, dailyRate, nextPaymentDue.toISOString()], function(loanErr) {
+                db.run(loanStmt, [userId, amount, amount, dailyRate, nextPaymentDue.toISOString()], function(loanErr) {
                     if (loanErr) {
-                        this.db.run('ROLLBACK');
+                        db.run('ROLLBACK');
                         reject(loanErr);
                         return;
                     }
@@ -268,17 +270,17 @@ class Database {
 
                     // Then update the user's gold coins
                     const userStmt = 'UPDATE users SET gold_coins = gold_coins + ?, last_active = CURRENT_TIMESTAMP WHERE user_id = ?';
-                    this.db.run(userStmt, [amount, userId], function(userErr) {
+                    db.run(userStmt, [amount, userId], function(userErr) {
                         if (userErr) {
-                            this.db.run('ROLLBACK');
+                            db.run('ROLLBACK');
                             reject(userErr);
                             return;
                         }
 
                         // Commit the transaction
-                        this.db.run('COMMIT', (commitErr) => {
+                        db.run('COMMIT', (commitErr) => {
                             if (commitErr) {
-                                this.db.run('ROLLBACK');
+                                db.run('ROLLBACK');
                                 reject(commitErr);
                             } else {
                                 resolve({
