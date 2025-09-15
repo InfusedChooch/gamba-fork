@@ -254,10 +254,17 @@ const GOBLIN_MESSAGES = {
                 '🛑 Can\'t Do It!',
                 '💸 Too Risky!'
             ],
-            descriptions: [
+            existingLoans: [
                 `Whoa there, big spender! You already got **{existingLoans}** active loans! I may be generous, but I ain't stupid!\n\nPay off your current debts before asking for more, capisce?`,
+                `Listen here, friend! You got **{existingLoans}** loans already on the books! Can't give you more until you clear those up!\n\nOne thing at a time, capisce?`
+            ],
+            totalDebt: [
                 `Nice try, but you're already in hock for **{totalDebt}** Gold Coins! Can't loan you more until you settle up!\n\nCome back when your books are cleaner, friend!`,
-                `Hold up! You want **{amount}** coins but you only got **{balance}** to your name! Even as collateral, that's too risky for this goblin!\n\nBuild up some savings first, then we'll talk!`
+                `Hold up there! You owe me **{totalDebt}** Gold Coins already! Pay that off before asking for more!\n\nI ain't running a charity here!`
+            ],
+            insufficientCollateral: [
+                `Hold up! You want **{amount}** coins but you only got **{balance}** to your name! Even as collateral, that's too risky for this goblin!\n\nBuild up some savings first, then we'll talk!`,
+                `Whoa there! **{amount}** Gold Coins? You only got **{balance}** in your vault! That's not enough collateral for me!\n\nCome back when you got more skin in the game, friend!`
             ]
         }
     },
@@ -909,14 +916,19 @@ client.on('messageCreate', async (message) => {
         if (existingLoans.length > 0) {
             const totalDebt = existingLoans.reduce((sum, loan) => sum + loan.current_balance, 0);
             const title = getRandomMessage(GOBLIN_MESSAGES.loans.denial.titles);
-            let description = getRandomMessage(GOBLIN_MESSAGES.loans.denial.descriptions);
-            
-            if (description.includes('{existingLoans}')) {
-                description = description.replace('{existingLoans}', existingLoans.length);
-            } else if (description.includes('{totalDebt}')) {
-                description = description.replace('{totalDebt}', Math.round(totalDebt));
+
+            // Choose appropriate message pool based on loan count vs debt amount
+            let description;
+            if (existingLoans.length === 1) {
+                // Use totalDebt message for single loan
+                description = getRandomMessage(GOBLIN_MESSAGES.loans.denial.totalDebt)
+                    .replace('{totalDebt}', Math.round(totalDebt));
+            } else {
+                // Use existingLoans message for multiple loans
+                description = getRandomMessage(GOBLIN_MESSAGES.loans.denial.existingLoans)
+                    .replace('{existingLoans}', existingLoans.length);
             }
-            
+
             const embed = new EmbedBuilder()
                 .setColor('#ff0000')
                 .setTitle(title)
@@ -928,10 +940,10 @@ client.on('messageCreate', async (message) => {
         const minRequiredBalance = loanAmount * 0.1; // 10% of loan amount
         if (user.gold_coins < minRequiredBalance) {
             const title = getRandomMessage(GOBLIN_MESSAGES.loans.denial.titles);
-            const description = getRandomMessage(GOBLIN_MESSAGES.loans.denial.descriptions)
+            const description = getRandomMessage(GOBLIN_MESSAGES.loans.denial.insufficientCollateral)
                 .replace('{amount}', loanAmount)
                 .replace('{balance}', user.gold_coins);
-            
+
             const embed = new EmbedBuilder()
                 .setColor('#ff0000')
                 .setTitle(title)
