@@ -462,8 +462,8 @@ async function processDailyLoans() {
                 const finalBalance = newBalance + lateFee;
                 const newMissedPayments = loan.missed_payments + 1;
                 
-                // Update loan with interest, late fee, and missed payment (no suspension)
-                await db.updateLoan(loan.loan_id, finalBalance, newMissedPayments, false);
+                // Update loan with interest, late fee, and missed payment
+                await db.updateLoan(loan.loan_id, finalBalance, newMissedPayments);
                 
                 console.log(`❌ Payment missed for loan ${loan.loan_id}. New balance: ${finalBalance}, Missed payments: ${newMissedPayments}`);
             }
@@ -618,6 +618,11 @@ client.on('messageCreate', async (message) => {
                     name: '✨ !forgiveloan @user',
                     value: 'Clear all debts for a user (debt forgiveness)\n*Example: `!forgiveloan @friend`*',
                     inline: true
+                },
+                {
+                    name: '📊 !viewloans',
+                    value: 'View all active loans in the system with user details\n*Example: `!viewloans`*',
+                    inline: true
                 }
             );
         }
@@ -724,6 +729,104 @@ client.on('messageCreate', async (message) => {
             .setDescription(`Done deal, boss! I've set ${targetUser}'s balance to **${amount}** Gold Coins!\n\n📊 **Balance Change:**\n• Previous balance: **${oldBalance}** coins\n• New balance: **${amount}** coins\n• Net change: **${amount - oldBalance}** coins\n\nThe books are all squared away!`);
         
         return await safeReply(message, { embeds: [embed] });
+    }
+
+    if (command === 'viewloans' || command === 'allloans') {
+        if (!hasAdminAccess(message.member)) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🚫 Admin Only, Friend!')
+                .setDescription('Whoa there! Only admins can view all loans! You need the **Gamba Bot Admin** role for that kind of access, capisce?');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        try {
+            const allLoans = await db.getAllActiveLoansWithUsers();
+
+            if (allLoans.length === 0) {
+                const embed = new EmbedBuilder()
+                    .setColor('#00ff88')
+                    .setTitle('📊 No Active Loans!')
+                    .setDescription('Excellent! No one owes me anything right now, boss!\n\nEveryone\'s got clean slates!');
+                return await safeReply(message, { embeds: [embed] });
+            }
+
+            let description = `Found **${allLoans.length}** active loans, boss!\n\n`;
+            let totalDebt = 0;
+
+            // Split loans into chunks of 5 for readability
+            const chunkSize = 5;
+            const chunks = [];
+            for (let i = 0; i < allLoans.length; i += chunkSize) {
+                chunks.push(allLoans.slice(i, i + chunkSize));
+            }
+
+            // Process first chunk for main embed
+            const firstChunk = chunks[0];
+            firstChunk.forEach((loan, index) => {
+                const balance = Math.round(loan.current_balance * 100) / 100;
+                const minPayment = Math.max(25, Math.ceil(balance * 0.03));
+                const nextDue = new Date(loan.next_payment_due).toLocaleDateString();
+                const userGold = loan.user_gold_coins;
+
+                description += `**Loan #${loan.loan_id}** - <@${loan.user_id}>\n`;
+                description += `• Balance: **${balance}** Gold Coins\n`;
+                description += `• User's Gold: **${userGold}** Gold Coins\n`;
+                description += `• Min Payment: **${minPayment}** Gold Coins\n`;
+                description += `• Next Due: **${nextDue}**\n`;
+                description += `• Missed: **${loan.missed_payments}**\n\n`;
+
+                totalDebt += balance;
+            });
+
+            description += `💰 **Total Outstanding Debt:** **${Math.round(totalDebt * 100) / 100}** Gold Coins`;
+
+            const embed = new EmbedBuilder()
+                .setColor('#ffd700')
+                .setTitle('📊 All Active Loans')
+                .setDescription(description)
+                .setFooter({ text: `Showing ${Math.min(chunkSize, allLoans.length)} of ${allLoans.length} loans` });
+
+            await safeReply(message, { embeds: [embed] });
+
+            // Send additional embeds for remaining chunks
+            for (let i = 1; i < chunks.length; i++) {
+                const chunk = chunks[i];
+                let chunkDescription = '';
+
+                chunk.forEach((loan) => {
+                    const balance = Math.round(loan.current_balance * 100) / 100;
+                    const minPayment = Math.max(25, Math.ceil(balance * 0.03));
+                    const nextDue = new Date(loan.next_payment_due).toLocaleDateString();
+                    const userGold = loan.user_gold_coins;
+
+                    chunkDescription += `**Loan #${loan.loan_id}** - <@${loan.user_id}>\n`;
+                    chunkDescription += `• Balance: **${balance}** Gold Coins\n`;
+                    chunkDescription += `• User's Gold: **${userGold}** Gold Coins\n`;
+                    chunkDescription += `• Min Payment: **${minPayment}** Gold Coins\n`;
+                    chunkDescription += `• Next Due: **${nextDue}**\n`;
+                    chunkDescription += `• Missed: **${loan.missed_payments}**\n\n`;
+                });
+
+                const continuationEmbed = new EmbedBuilder()
+                    .setColor('#ffd700')
+                    .setTitle(`📊 All Active Loans (continued)`)
+                    .setDescription(chunkDescription)
+                    .setFooter({ text: `Showing ${i * chunkSize + 1}-${Math.min((i + 1) * chunkSize, allLoans.length)} of ${allLoans.length} loans` });
+
+                await message.channel.send({ embeds: [continuationEmbed] });
+            }
+
+        } catch (error) {
+            console.error('Error fetching all loans:', error);
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🚫 Database Error!')
+                .setDescription('Sorry boss, had trouble fetching the loan data! Check the logs for details.');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        return;
     }
 
     if (command === 'roll') {
@@ -836,22 +939,30 @@ client.on('messageCreate', async (message) => {
             return await safeReply(message, { embeds: [embed] });
         }
 
-        // Create the loan
-        const loan = await db.createLoan(message.author.id, loanAmount);
-        const newBalance = user.gold_coins + loanAmount;
-        await db.updateGoldCoins(message.author.id, newBalance);
+        try {
+            // Create the loan and update user's balance atomically
+            const loan = await db.createLoanTransaction(message.author.id, loanAmount);
+            const newBalance = user.gold_coins + loanAmount;
 
-        const title = getRandomMessage(GOBLIN_MESSAGES.loans.approval.titles);
-        const description = getRandomMessage(GOBLIN_MESSAGES.loans.approval.descriptions)
-            .replace(/{amount}/g, loanAmount)
-            .replace('{newBalance}', newBalance);
+            const title = getRandomMessage(GOBLIN_MESSAGES.loans.approval.titles);
+            const description = getRandomMessage(GOBLIN_MESSAGES.loans.approval.descriptions)
+                .replace(/{amount}/g, loanAmount)
+                .replace('{newBalance}', newBalance);
 
-        const embed = new EmbedBuilder()
-            .setColor('#00ff00')
-            .setTitle(title)
-            .setDescription(description);
-        
-        return await safeReply(message, { embeds: [embed] });
+            const embed = new EmbedBuilder()
+                .setColor('#00ff00')
+                .setTitle(title)
+                .setDescription(description);
+
+            return await safeReply(message, { embeds: [embed] });
+        } catch (loanError) {
+            console.error('Error creating loan:', loanError);
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🚫 Loan Transaction Failed!')
+                .setDescription('Sorry friend, something went wrong with your loan application! The transaction has been rolled back - no loan created and no coins deducted. Try again in a moment!');
+            return await safeReply(message, { embeds: [embed] });
+        }
     }
 
     if (command === 'loanstatus' || command === 'loans') {

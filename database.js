@@ -145,18 +145,48 @@ class Database {
         });
     }
 
-    updateLoan(loanId, balance, missedPayments, isSuspended, lastPaymentDate = null) {
+    getAllActiveLoansWithUsers() {
+        return new Promise((resolve, reject) => {
+            const query = `
+                SELECT
+                    l.loan_id,
+                    l.user_id,
+                    l.principal_amount,
+                    l.current_balance,
+                    l.daily_interest_rate,
+                    l.created_at,
+                    l.next_payment_due,
+                    l.missed_payments,
+                    l.is_suspended,
+                    l.last_payment_date,
+                    u.gold_coins as user_gold_coins
+                FROM loans l
+                JOIN users u ON l.user_id = u.user_id
+                WHERE l.current_balance > 0
+                ORDER BY l.current_balance DESC
+            `;
+            this.db.all(query, [], (err, rows) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(rows || []);
+                }
+            });
+        });
+    }
+
+    updateLoan(loanId, balance, missedPayments, lastPaymentDate = null) {
         return new Promise((resolve, reject) => {
             const nextPaymentDue = new Date();
             nextPaymentDue.setDate(nextPaymentDue.getDate() + 1);
             nextPaymentDue.setHours(4, 0, 0, 0);
-            
-            const stmt = `UPDATE loans 
-                         SET current_balance = ?, missed_payments = ?, is_suspended = ?, 
+
+            const stmt = `UPDATE loans
+                         SET current_balance = ?, missed_payments = ?,
                              last_payment_date = ?, next_payment_due = ?
                          WHERE loan_id = ?`;
-            
-            this.db.run(stmt, [balance, missedPayments, isSuspended ? 1 : 0, lastPaymentDate, nextPaymentDue.toISOString(), loanId], function(err) {
+
+            this.db.run(stmt, [balance, missedPayments, lastPaymentDate, nextPaymentDue.toISOString(), loanId], function(err) {
                 if (err) {
                     reject(err);
                 } else {
@@ -173,9 +203,9 @@ class Database {
             nextPaymentDue.setDate(nextPaymentDue.getDate() + 1);
             nextPaymentDue.setHours(4, 0, 0, 0);
             
-            const stmt = `UPDATE loans 
-                         SET current_balance = ?, last_payment_date = ?, next_payment_due = ?, 
-                             missed_payments = 0, is_suspended = 0
+            const stmt = `UPDATE loans
+                         SET current_balance = ?, last_payment_date = ?, next_payment_due = ?,
+                             missed_payments = 0
                          WHERE loan_id = ?`;
             
             this.db.run(stmt, [newBalance, now, nextPaymentDue.toISOString(), loanId], function(err) {
@@ -208,6 +238,58 @@ class Database {
                 } else {
                     resolve({ changes: this.changes });
                 }
+            });
+        });
+    }
+
+    // Atomic transaction to create loan and update user's gold coins
+    createLoanTransaction(userId, amount, dailyRate = 0.0005) {
+        return new Promise((resolve, reject) => {
+            this.db.serialize(() => {
+                this.db.run('BEGIN TRANSACTION');
+
+                const nextPaymentDue = new Date();
+                nextPaymentDue.setDate(nextPaymentDue.getDate() + 1);
+                nextPaymentDue.setHours(4, 0, 0, 0); // 4 AM UTC = Midnight EST
+
+                // First, create the loan
+                const loanStmt = `INSERT INTO loans
+                                 (user_id, principal_amount, current_balance, daily_interest_rate, next_payment_due)
+                                 VALUES (?, ?, ?, ?, ?)`;
+
+                this.db.run(loanStmt, [userId, amount, amount, dailyRate, nextPaymentDue.toISOString()], function(loanErr) {
+                    if (loanErr) {
+                        this.db.run('ROLLBACK');
+                        reject(loanErr);
+                        return;
+                    }
+
+                    const loanId = this.lastID;
+
+                    // Then update the user's gold coins
+                    const userStmt = 'UPDATE users SET gold_coins = gold_coins + ?, last_active = CURRENT_TIMESTAMP WHERE user_id = ?';
+                    this.db.run(userStmt, [amount, userId], function(userErr) {
+                        if (userErr) {
+                            this.db.run('ROLLBACK');
+                            reject(userErr);
+                            return;
+                        }
+
+                        // Commit the transaction
+                        this.db.run('COMMIT', (commitErr) => {
+                            if (commitErr) {
+                                this.db.run('ROLLBACK');
+                                reject(commitErr);
+                            } else {
+                                resolve({
+                                    loan_id: loanId,
+                                    principal_amount: amount,
+                                    current_balance: amount
+                                });
+                            }
+                        });
+                    });
+                });
             });
         });
     }
