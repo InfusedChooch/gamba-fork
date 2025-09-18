@@ -84,16 +84,23 @@ const ADMIN_ROLE = 'Gamba Bot Admin';
 
 // Blackjack game storage
 const activeBlackjackGames = new Map();
+const playerShoes = new Map();
+
+const DECKS_PER_SHOE = 2;
+const SHUFFLE_THRESHOLD = 15;
+const SHOE_EXPIRATION_MS = 60 * 60 * 1000; // 1 hour
 
 // Blackjack card system
 const SUITS = ['♠️', '♥️', '♦️', '♣️'];
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 
-function createDeck() {
+function createDeck(numDecks = 1) {
     const deck = [];
-    for (const suit of SUITS) {
-        for (const rank of RANKS) {
-            deck.push({ suit, rank });
+    for (let d = 0; d < numDecks; d++) {
+        for (const suit of SUITS) {
+            for (const rank of RANKS) {
+                deck.push({ suit, rank });
+            }
         }
     }
     return shuffleDeck(deck);
@@ -106,6 +113,63 @@ function shuffleDeck(deck) {
         [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
     return shuffled;
+}
+
+function createPlayerShoe() {
+    return {
+        cards: createDeck(DECKS_PER_SHOE),
+        runningCount: 0,
+        lastRefreshed: Date.now()
+    };
+}
+
+function ensurePlayerShoe(userId, { forceNew = false } = {}) {
+    let shoe = playerShoes.get(userId);
+    let reshuffled = false;
+    const now = Date.now();
+
+    if (
+        forceNew ||
+        !shoe ||
+        shoe.cards.length < SHUFFLE_THRESHOLD ||
+        now - shoe.lastRefreshed >= SHOE_EXPIRATION_MS
+    ) {
+        shoe = createPlayerShoe();
+        playerShoes.set(userId, shoe);
+        reshuffled = true;
+    }
+
+    return { shoe, reshuffled };
+}
+
+function drawCardForPlayer(userId) {
+    let reshuffled = false;
+    let { shoe, reshuffled: ensured } = ensurePlayerShoe(userId);
+    reshuffled = reshuffled || ensured;
+
+    if (!shoe || shoe.cards.length === 0) {
+        ({ shoe } = ensurePlayerShoe(userId, { forceNew: true }));
+        reshuffled = true;
+    }
+
+    const card = shoe.cards.pop();
+    updateRunningCount(shoe, card);
+    return { card, reshuffled };
+}
+
+function updateRunningCount(shoe, card) {
+    if (!shoe) {
+        return;
+    }
+
+    const highCards = ['10', 'J', 'Q', 'K', 'A'];
+    const lowCards = ['2', '3', '4', '5', '6'];
+
+    if (lowCards.includes(card.rank)) {
+        shoe.runningCount += 1;
+    } else if (highCards.includes(card.rank)) {
+        shoe.runningCount -= 1;
+    }
 }
 
 function getCardValue(card, currentTotal = 0) {
@@ -580,6 +644,11 @@ client.on('messageCreate', async (message) => {
                     name: '✋ !stand',
                     value: 'Keep your current hand and let the dealer play!',
                     inline: true
+                },
+                {
+                    name: '🧮 !count',
+                    value: 'Pay 10% of your current bet to peek at the running and true count of your personal two-deck blackjack shoe!',
+                    inline: false
                 },
                 {
                     name: '🏦 !loan <amount>',
@@ -1152,18 +1221,29 @@ client.on('messageCreate', async (message) => {
         }
 
         // Start new blackjack game
-        const deck = createDeck();
-        const playerHand = [deck.pop(), deck.pop()];
-        const dealerHand = [deck.pop(), deck.pop()];
-        
+        const firstPlayerDraw = drawCardForPlayer(message.author.id);
+        const secondPlayerDraw = drawCardForPlayer(message.author.id);
+        const firstDealerDraw = drawCardForPlayer(message.author.id);
+        const secondDealerDraw = drawCardForPlayer(message.author.id);
+
+        const reshuffled =
+            firstPlayerDraw.reshuffled ||
+            secondPlayerDraw.reshuffled ||
+            firstDealerDraw.reshuffled ||
+            secondDealerDraw.reshuffled;
+
+        const playerHand = [firstPlayerDraw.card, secondPlayerDraw.card];
+        const dealerHand = [firstDealerDraw.card, secondDealerDraw.card];
+
         const game = {
             userId: message.author.id,
             betAmount: betAmount,
-            deck: deck,
             playerHand: playerHand,
             dealerHand: dealerHand,
             gameOver: false,
-            channelId: message.channel.id
+            channelId: message.channel.id,
+            countUsed: false,
+            reshuffled
         };
 
         activeBlackjackGames.set(message.author.id, game);
@@ -1232,6 +1312,14 @@ client.on('messageCreate', async (message) => {
                 { name: '🎮 Your Move', value: 'Use `!hit` to draw another card or `!stand` to keep your current hand!', inline: false }
             );
 
+        if (game.reshuffled) {
+            embed.addFields({
+                name: 'Important: Fresh Shoe',
+                value: 'Your personal two-deck shoe was reshuffled. The running count for your sessions has been reset.'
+            });
+            game.reshuffled = false;
+        }
+
         return await safeReply(message, { embeds: [embed] });
     }
 
@@ -1255,7 +1343,7 @@ client.on('messageCreate', async (message) => {
         }
 
         // Draw a card
-        const newCard = game.deck.pop();
+        const { card: newCard, reshuffled: shoeRefreshed } = drawCardForPlayer(message.author.id);
         game.playerHand.push(newCard);
         const playerTotal = calculateHandValue(game.playerHand);
 
@@ -1279,6 +1367,13 @@ client.on('messageCreate', async (message) => {
                     { name: '🃏 Your Hand', value: `${formatHand(game.playerHand)} = **${playerTotal}** (BUST!)`, inline: true },
                     { name: '🎰 Dealer Hand', value: `${formatHand(game.dealerHand, true)}`, inline: true }
                 );
+
+            if (shoeRefreshed) {
+                embed.addFields({
+                    name: 'Important: Fresh Shoe',
+                    value: 'Your personal two-deck shoe was reshuffled due to a natural shuffle or hourly refresh. Counts have been reset.'
+                });
+            }
             return await safeReply(message, { embeds: [embed] });
         } else {
             // Still in play
@@ -1292,8 +1387,84 @@ client.on('messageCreate', async (message) => {
                     { name: '🎰 Dealer Hand', value: `${formatHand(game.dealerHand, true)} = **${dealerUpValue}+**`, inline: true },
                     { name: '🎮 Your Move', value: 'Use `!hit` for another card or `!stand` to end your turn!', inline: false }
                 );
+
+            if (shoeRefreshed) {
+                embed.addFields({
+                    name: 'Important: Fresh Shoe',
+                    value: 'Your personal two-deck shoe was reshuffled due to a natural shuffle or hourly refresh. Counts have been reset.'
+                });
+            }
             return await safeReply(message, { embeds: [embed] });
         }
+    }
+
+    if (command === 'count') {
+        const game = activeBlackjackGames.get(message.author.id);
+
+        if (!game) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🃏 No Active Game!')
+                .setDescription('You need an active blackjack hand to peek at the count. Start a new game with `!blackjack <amount>`.');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        if (game.gameOver) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('🃏 Game Already Finished!')
+                .setDescription('That hand is already settled. Start a fresh game to get another count!');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        if (game.countUsed) {
+            const embed = new EmbedBuilder()
+                .setColor('#ffaa00')
+                .setTitle('🧮 Count Already Requested')
+                .setDescription('You already paid for the count this hand. Finish the round or start a new game for another peek.');
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        const cost = Math.max(1, Math.floor(game.betAmount * 0.1));
+
+        if (user.gold_coins < cost) {
+            const embed = new EmbedBuilder()
+                .setColor('#ff0000')
+                .setTitle('💸 Not Enough Gold!')
+                .setDescription(`Peeking at the count costs **${cost}** Gold Coins, but you've only got **${user.gold_coins}**. Win a few more hands and try again!`);
+            return await safeReply(message, { embeds: [embed] });
+        }
+
+        const newBalance = user.gold_coins - cost;
+        await db.updateGoldCoins(message.author.id, newBalance);
+        user.gold_coins = newBalance;
+        game.countUsed = true;
+
+        const { shoe, reshuffled: shoeRefreshed } = ensurePlayerShoe(message.author.id);
+        const runningCount = shoe.runningCount;
+        const decksRemaining = shoe.cards.length / 52;
+        const trueCount = decksRemaining > 0 ? runningCount / decksRemaining : runningCount;
+        const roundedTrueCount = Math.round(trueCount * 100) / 100;
+        const displayedTrueCount = roundedTrueCount === 0 ? 0 : roundedTrueCount;
+
+        const embed = new EmbedBuilder()
+            .setColor('#ffaa00')
+            .setTitle('🧮 Shoe Count')
+            .setDescription(`Cost deducted: **${cost}** Gold Coins\nNew balance: **${newBalance}** Gold Coins`)
+            .addFields(
+                { name: 'Running Count', value: `${runningCount}`, inline: true },
+                { name: 'True Count', value: `${displayedTrueCount}`, inline: true },
+                { name: 'Cards Remaining', value: `${shoe.cards.length}`, inline: true }
+            );
+
+        if (shoeRefreshed) {
+            embed.addFields({
+                name: 'Important',
+                value: 'Your personal shoe reshuffled due to a natural shuffle or hourly refresh. Counts have been reset.'
+            });
+        }
+
+        return await safeReply(message, { embeds: [embed] });
     }
 
     if (command === 'stand') {
@@ -1316,8 +1487,11 @@ client.on('messageCreate', async (message) => {
         }
 
         // Dealer plays
+        let shoeRefreshedDuringDealer = false;
         while (calculateHandValue(game.dealerHand) < 17) {
-            game.dealerHand.push(game.deck.pop());
+            const { card, reshuffled } = drawCardForPlayer(message.author.id);
+            game.dealerHand.push(card);
+            shoeRefreshedDuringDealer = shoeRefreshedDuringDealer || reshuffled;
         }
 
         const playerTotal = calculateHandValue(game.playerHand);
@@ -1373,6 +1547,13 @@ client.on('messageCreate', async (message) => {
                 { name: '🃏 Your Hand', value: `${formatHand(game.playerHand)} = **${playerTotal}**`, inline: true },
                 { name: '🎰 Dealer Hand', value: `${formatHand(game.dealerHand)} = **${dealerTotal}**${dealerBusted ? ' (BUST!)' : ''}`, inline: true }
             );
+
+        if (shoeRefreshedDuringDealer) {
+            embed.addFields({
+                name: 'Important: Fresh Shoe',
+                value: 'Your personal two-deck shoe was reshuffled during the dealer\'s turn. Counts have been reset.'
+            });
+        }
 
         return await safeReply(message, { embeds: [embed] });
     }
